@@ -14,7 +14,7 @@ const WHITE  = render.makeColor(255, 255, 255);
 const BLACK  = render.makeColor(0, 0, 0);
 const TRACK  = render.makeColor(225, 225, 225);  // ring background track
 const DGRAY  = render.makeColor(110, 110, 110);  // labels
-const MGRAY  = render.makeColor(160, 160, 160);  // secondary text
+const MGRAY  = render.makeColor(130, 130, 130);  // secondary text
 const GOLD   = render.makeColor(220, 180, 0);    // crown
 
 function scoreColor(s) {
@@ -26,10 +26,10 @@ function scoreColor(s) {
 }
 
 // ---- Fonts ----
-const fontTime  = new render.Font("Bitham-Black", 30);
+const fontTime  = new render.Font("Bitham-Bold", 42);
 const fontScore = new render.Font("Roboto-Condensed", 21);
 const fontLabel = new render.Font("Gothic-Regular", 14);
-const fontDate  = new render.Font("Gothic-Regular", 14);
+const fontDate  = new render.Font("Gothic-Regular", 18);
 
 // ---- Layout ----
 const RING_R  = 28;                     // outer radius
@@ -93,7 +93,7 @@ function drawRing(cx, cy, score, label) {
 
 	// Label below ring
 	const lw = render.getTextWidth(label, fontLabel);
-	render.drawText(label, fontLabel, DGRAY, cx - (lw >> 1), LABEL_Y);
+	render.drawText(label, fontLabel, BLACK, cx - (lw >> 1), LABEL_Y);
 }
 
 // ---- Time & date ----
@@ -125,12 +125,12 @@ function draw() {
 	// Time
 	const timeStr = getTimeString();
 	const tw = render.getTextWidth(timeStr, fontTime);
-	render.drawText(timeStr, fontTime, BLACK, (W - tw) >> 1, 16);
+	render.drawText(timeStr, fontTime, BLACK, (W - tw) >> 1, 10);
 
 	// Date
 	const dateStr = getDateString();
 	const dw = render.getTextWidth(dateStr, fontDate);
-	render.drawText(dateStr, fontDate, MGRAY, (W - dw) >> 1, 60);
+	render.drawText(dateStr, fontDate, BLACK, (W - dw) >> 1, 66);
 
 	if (!state.auth) {
 		const lines = ["Not connected.", "Open app settings", "to authorize Oura."];

@@ -75,6 +75,12 @@ function yesterdayISO() {
 	return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
 }
 
+function tomorrowISO() {
+	const d = new Date();
+	d.setDate(d.getDate() + 1);
+	return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+}
+
 // ---- HTTP helper ----
 function xhrGet(url, token, callback) {
 	const xhr = new XMLHttpRequest();
@@ -197,31 +203,32 @@ function fetchAndSend(token) {
 		fetchScore('/daily_readiness', token, function (readinessScore, unauth2) {
 			if (unauth2) { Pebble.sendAppMessage({ AUTH_STATUS: 0 }); return; }
 
-			fetchScore('/daily_activity', token, function (activityScore, unauth3) {
-				if (unauth3) { Pebble.sendAppMessage({ AUTH_STATUS: 0 }); return; }
+			// Query activity from yesterday to tomorrow to handle timezone edge cases
+			var actUrl = API_BASE + '/daily_activity?start_date=' + yesterdayISO() + '&end_date=' + tomorrowISO();
+			xhrGet(actUrl, token, function (data, err) {
+				if (err === 'unauthorized') { Pebble.sendAppMessage({ AUTH_STATUS: 0 }); return; }
 
-				function sendScores(activity) {
-					cacheScores(sleepScore, readinessScore, activity);
-					console.log('[Oura] Scores — Sleep: ' + sleepScore
-					          + ', Readiness: ' + readinessScore
-					          + ', Activity: ' + activity);
-					Pebble.sendAppMessage({
-						AUTH_STATUS:     1,
-						SLEEP_SCORE:     sleepScore,
-						READINESS_SCORE: readinessScore,
-						ACTIVITY_SCORE:  activity,
-					});
+				var activityScore = -1;
+				if (!err && data && data.data && data.data.length > 0) {
+					// Take the latest entry with a valid score
+					for (var i = data.data.length - 1; i >= 0; i--) {
+						if (data.data[i].score != null) {
+							activityScore = data.data[i].score;
+							break;
+						}
+					}
 				}
 
-				if (activityScore < 0) {
-					// No activity score today yet — try yesterday
-					fetchScore('/daily_activity', token, function (ydayScore, unauth4) {
-						if (unauth4) { Pebble.sendAppMessage({ AUTH_STATUS: 0 }); return; }
-						sendScores(ydayScore >= 0 ? ydayScore : -1);
-					}, yesterdayISO());
-				} else {
-					sendScores(activityScore);
-				}
+				cacheScores(sleepScore, readinessScore, activityScore);
+				console.log('[Oura] Scores — Sleep: ' + sleepScore
+				          + ', Readiness: ' + readinessScore
+				          + ', Activity: ' + activityScore);
+				Pebble.sendAppMessage({
+					AUTH_STATUS:     1,
+					SLEEP_SCORE:     sleepScore,
+					READINESS_SCORE: readinessScore,
+					ACTIVITY_SCORE:  activityScore,
+				});
 			});
 		});
 	});
