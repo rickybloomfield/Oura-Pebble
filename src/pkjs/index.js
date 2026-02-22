@@ -34,11 +34,44 @@ function isTokenExpired() {
 	return Date.now() > parseInt(expiry, 10);
 }
 
+// ---- Score cache helpers (localStorage on the phone) ----
+function getCachedScores() {
+	const raw = localStorage.getItem('oura_cached_scores');
+	if (!raw) return null;
+	try { return JSON.parse(raw); } catch (e) { return null; }
+}
+
+function cacheScores(sleep, readiness, activity) {
+	localStorage.setItem('oura_cached_scores', JSON.stringify({
+		sleep: sleep, readiness: readiness, activity: activity
+	}));
+}
+
+function sendCachedScores() {
+	const cached = getCachedScores();
+	if (!cached) return;
+	console.log('[Oura] Sending cached scores — Sleep: ' + cached.sleep
+	          + ', Readiness: ' + cached.readiness
+	          + ', Activity: ' + cached.activity);
+	Pebble.sendAppMessage({
+		AUTH_STATUS:     1,
+		SLEEP_SCORE:     cached.sleep,
+		READINESS_SCORE: cached.readiness,
+		ACTIVITY_SCORE:  cached.activity,
+	});
+}
+
 // ---- Date helper ----
 function pad(n) { return n < 10 ? '0' + n : '' + n; }
 
 function todayISO() {
 	const d = new Date();
+	return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+}
+
+function yesterdayISO() {
+	const d = new Date();
+	d.setDate(d.getDate() - 1);
 	return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
 }
 
@@ -142,8 +175,8 @@ function withValidToken(callback) {
 }
 
 // ---- Oura API: fetch one endpoint ----
-function fetchScore(path, token, callback) {
-	const date = todayISO();
+function fetchScore(path, token, callback, date) {
+	date = date || todayISO();
 	const url  = API_BASE + path + '?start_date=' + date + '&end_date=' + date;
 	xhrGet(url, token, function (data, err) {
 		if (err === 'unauthorized') { callback(null, true); return; }
@@ -167,16 +200,28 @@ function fetchAndSend(token) {
 			fetchScore('/daily_activity', token, function (activityScore, unauth3) {
 				if (unauth3) { Pebble.sendAppMessage({ AUTH_STATUS: 0 }); return; }
 
-				console.log('[Oura] Scores — Sleep: ' + sleepScore
-				          + ', Readiness: ' + readinessScore
-				          + ', Activity: ' + activityScore);
+				function sendScores(activity) {
+					cacheScores(sleepScore, readinessScore, activity);
+					console.log('[Oura] Scores — Sleep: ' + sleepScore
+					          + ', Readiness: ' + readinessScore
+					          + ', Activity: ' + activity);
+					Pebble.sendAppMessage({
+						AUTH_STATUS:     1,
+						SLEEP_SCORE:     sleepScore,
+						READINESS_SCORE: readinessScore,
+						ACTIVITY_SCORE:  activity,
+					});
+				}
 
-				Pebble.sendAppMessage({
-					AUTH_STATUS:     1,
-					SLEEP_SCORE:     sleepScore,
-					READINESS_SCORE: readinessScore,
-					ACTIVITY_SCORE:  activityScore,
-				});
+				if (activityScore < 0) {
+					// No activity score today yet — try yesterday
+					fetchScore('/daily_activity', token, function (ydayScore, unauth4) {
+						if (unauth4) { Pebble.sendAppMessage({ AUTH_STATUS: 0 }); return; }
+						sendScores(ydayScore >= 0 ? ydayScore : -1);
+					}, yesterdayISO());
+				} else {
+					sendScores(activityScore);
+				}
 			});
 		});
 	});
@@ -184,20 +229,28 @@ function fetchAndSend(token) {
 
 // ---- Pebble lifecycle events ----
 
-// Phone is ready — proactively send scores to the watch
-Pebble.addEventListener('ready', function () {
-	console.log('[Oura] pkjs ready.');
+// ---- Periodic refresh (every 30 minutes) ----
+var REFRESH_INTERVAL = 30 * 60 * 1000;
+
+function refreshScores() {
 	withValidToken(function (token) {
 		fetchAndSend(token);
 	});
+}
+
+// Phone is ready — send cached scores immediately, then fetch fresh
+Pebble.addEventListener('ready', function () {
+	console.log('[Oura] pkjs ready.');
+	sendCachedScores();
+	refreshScores();
+	setInterval(refreshScores, REFRESH_INTERVAL);
 });
 
 // Watch requested a refresh (sends REQUEST_SCORES: 1 via pebble/message)
 Pebble.addEventListener('appmessage', function (e) {
 	if (e.payload.REQUEST_SCORES) {
-		withValidToken(function (token) {
-			fetchAndSend(token);
-		});
+		sendCachedScores();
+		refreshScores();
 	}
 });
 

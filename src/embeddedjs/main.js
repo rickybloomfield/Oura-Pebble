@@ -10,108 +10,150 @@ const W = render.width;
 const H = render.height;
 
 // ---- Colors ----
-const BLACK  = render.makeColor(0, 0, 0);
 const WHITE  = render.makeColor(255, 255, 255);
-const GRAY   = render.makeColor(70, 70, 70);
-const LGRAY  = render.makeColor(150, 150, 150);
+const BLACK  = render.makeColor(0, 0, 0);
+const TRACK  = render.makeColor(225, 225, 225);  // ring background track
+const DGRAY  = render.makeColor(110, 110, 110);  // labels
+const MGRAY  = render.makeColor(160, 160, 160);  // secondary text
+const GOLD   = render.makeColor(220, 180, 0);    // crown
 
 function scoreColor(s) {
-	if (s < 0)   return LGRAY;
-	if (s >= 85) return render.makeColor(0, 190, 80);   // excellent: green
-	if (s >= 70) return render.makeColor(180, 210, 0);  // good: yellow-green
-	if (s >= 60) return render.makeColor(255, 150, 0);  // fair: orange
-	return            render.makeColor(215, 45,  45);   // poor: red
+	if (s < 0)   return TRACK;
+	if (s >= 85) return render.makeColor(0, 180, 80);   // excellent: green
+	if (s >= 70) return render.makeColor(160, 200, 0);   // good: yellow-green
+	if (s >= 60) return render.makeColor(240, 150, 0);   // fair: orange
+	return            render.makeColor(210, 50, 50);      // poor: red
 }
 
-// ---- Fonts (Pebble system fonts — no custom font files needed) ----
-// Available names: "Gothic-Regular", "Bitham-Black", "Roboto-Condensed"
-const fontTitle  = new render.Font("Gothic-Regular", 18);
-const fontLabel  = new render.Font("Gothic-Regular", 14);
-const fontScore  = new render.Font("Roboto-Condensed", 21);
-const fontDate   = new render.Font("Gothic-Regular", 14);
+// ---- Fonts ----
+const fontTime  = new render.Font("Bitham-Black", 36);
+const fontScore = new render.Font("Roboto-Condensed", 21);
+const fontLabel = new render.Font("Gothic-Regular", 14);
+const fontDate  = new render.Font("Gothic-Regular", 14);
 
 // ---- Layout ----
-const HEADER_H  = 40;
-const SECTION_H = Math.floor((H - HEADER_H) / 3);
-const BAR_H     = 3;
+const RING_R  = 28;                     // outer radius
+const RING_W  = 6;                      // ring thickness
+const RING_IR = RING_R - RING_W;        // inner radius
+const RING_Y  = 138;                    // vertical center of rings
+const RING_XS = [34, 100, 166];         // horizontal centers
+const LABEL_Y = RING_Y + RING_R + 6;
 
 // ---- App state ----
-// Scores are -1 if unavailable; 0–100 when valid.
 let state = {
 	sleep:     -1,
 	readiness: -1,
 	activity:  -1,
-	auth:      true,   // assume authorized; phone corrects on first message
+	auth:      true,
 	loading:   true,
 };
 
-// ---- Drawing ----
-function drawSection(label, score, y) {
-	const scoreText = (score >= 0) ? String(score) : "--";
+// ---- Crown ----
+function drawCrown(cx, cy, color) {
+	// Simple 3-point crown, ~14px wide, ~9px tall
+	// cy = top of crown
+	const b = cy + 8;
+	const m = cy + 5;
+	render.drawLine(cx - 7, b, cx - 5, cy, color, 2);
+	render.drawLine(cx - 5, cy, cx - 2, m, color, 2);
+	render.drawLine(cx - 2, m, cx, cy, color, 2);
+	render.drawLine(cx, cy, cx + 2, m, color, 2);
+	render.drawLine(cx + 2, m, cx + 5, cy, color, 2);
+	render.drawLine(cx + 5, cy, cx + 7, b, color, 2);
+	render.drawLine(cx - 7, b, cx + 7, b, color, 2);
+}
+
+// ---- Ring ----
+function drawRing(cx, cy, score, label) {
 	const sc = scoreColor(score);
 
-	// Divider at top of section
-	render.fillRectangle(GRAY, 0, y, W, 1);
+	// Gray track (full circle)
+	render.drawCircle(TRACK, cx, cy, RING_R);
 
-	// Score number — large, right-aligned
-	const sw = render.getTextWidth(scoreText, fontScore);
-	render.drawText(scoreText, fontScore, sc, W - sw - 8, y + 4);
-
-	// Label — small, left-aligned, vertically centred in section
-	render.drawText(label, fontLabel, LGRAY, 8, y + 8);
-
-	// Score bar at the bottom of the section
-	const barY = y + SECTION_H - BAR_H - 6;
-	render.fillRectangle(GRAY, 8, barY, W - 16, BAR_H);
-	if (score >= 0) {
-		const fill = Math.round((W - 16) * score / 100);
-		render.fillRectangle(sc, 8, barY, fill, BAR_H);
+	// Score arc
+	if (score > 0) {
+		const angle = Math.round(score * 360 / 100);
+		render.drawCircle(sc, cx, cy, RING_R, 0, angle);
 	}
+
+	// White center (creates donut)
+	render.drawCircle(WHITE, cx, cy, RING_IR);
+
+	// Score text
+	const scoreText = (score >= 0) ? String(score) : "--";
+	const tw = render.getTextWidth(scoreText, fontScore);
+
+	if (score >= 85) {
+		// Crown above score
+		drawCrown(cx, cy - 14, GOLD);
+		render.drawText(scoreText, fontScore, BLACK, cx - (tw >> 1), cy - 2);
+	} else {
+		render.drawText(scoreText, fontScore, BLACK, cx - (tw >> 1), cy - 9);
+	}
+
+	// Label below ring
+	const lw = render.getTextWidth(label, fontLabel);
+	render.drawText(label, fontLabel, DGRAY, cx - (lw >> 1), LABEL_Y);
+}
+
+// ---- Time & date ----
+function pad2(n) { return n < 10 ? "0" + n : String(n); }
+
+function getTimeString() {
+	const d = new Date();
+	let h = d.getHours();
+	const m = pad2(d.getMinutes());
+	const ampm = h >= 12 ? "PM" : "AM";
+	h = h % 12;
+	if (h === 0) h = 12;
+	return h + ":" + m;
 }
 
 function getDateString() {
 	const d = new Date();
+	const days  = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 	const months = ["Jan","Feb","Mar","Apr","May","Jun",
 	                "Jul","Aug","Sep","Oct","Nov","Dec"];
-	return months[d.getMonth()] + " " + d.getDate();
+	return days[d.getDay()] + ", " + months[d.getMonth()] + " " + d.getDate();
 }
 
+// ---- Main draw ----
 function draw() {
 	render.begin(0, 0, W, H);
-		render.fillRectangle(BLACK, 0, 0, W, H);
+	render.fillRectangle(WHITE, 0, 0, W, H);
 
-		// Header: title + date
-		const title = "OURA";
-		const tw = render.getTextWidth(title, fontTitle);
-		render.drawText(title, fontTitle, WHITE, (W - tw) >> 1, 4);
+	// Time
+	const timeStr = getTimeString();
+	const tw = render.getTextWidth(timeStr, fontTime);
+	render.drawText(timeStr, fontTime, BLACK, (W - tw) >> 1, 16);
 
-		const dateStr = getDateString();
-		const dw = render.getTextWidth(dateStr, fontDate);
-		render.drawText(dateStr, fontDate, LGRAY, (W - dw) >> 1, 22);
+	// Date
+	const dateStr = getDateString();
+	const dw = render.getTextWidth(dateStr, fontDate);
+	render.drawText(dateStr, fontDate, MGRAY, (W - dw) >> 1, 60);
 
-		if (!state.auth) {
-			// User needs to authorise in the Pebble app
-			const lines = ["Not connected.", "Open app settings", "to authorize Oura."];
-			let ly = (H >> 1) - 24;
-			for (let i = 0; i < lines.length; i++) {
-				const lw = render.getTextWidth(lines[i], fontLabel);
-				render.drawText(lines[i], fontLabel, LGRAY, (W - lw) >> 1, ly);
-				ly += 18;
-			}
-		} else if (state.loading) {
-			const msg = "Loading...";
-			const mw = render.getTextWidth(msg, fontLabel);
-			render.drawText(msg, fontLabel, LGRAY, (W - mw) >> 1, (H >> 1) - 9);
-		} else {
-			drawSection("Sleep",     state.sleep,     HEADER_H);
-			drawSection("Readiness", state.readiness, HEADER_H + SECTION_H);
-			drawSection("Activity",  state.activity,  HEADER_H + SECTION_H * 2);
+	if (!state.auth) {
+		const lines = ["Not connected.", "Open app settings", "to authorize Oura."];
+		let ly = RING_Y - 20;
+		for (let i = 0; i < lines.length; i++) {
+			const lw = render.getTextWidth(lines[i], fontLabel);
+			render.drawText(lines[i], fontLabel, DGRAY, (W - lw) >> 1, ly);
+			ly += 18;
 		}
+	} else if (state.loading) {
+		const msg = "Loading...";
+		const mw = render.getTextWidth(msg, fontLabel);
+		render.drawText(msg, fontLabel, MGRAY, (W - mw) >> 1, RING_Y - 8);
+	} else {
+		drawRing(RING_XS[0], RING_Y, state.sleep, "Sleep");
+		drawRing(RING_XS[1], RING_Y, state.readiness, "Readiness");
+		drawRing(RING_XS[2], RING_Y, state.activity, "Activity");
+	}
+
 	render.end();
 }
 
 // ---- Phone communication ----
-// Keys must match messageKeys in package.json.
 const message = new Message({
 	keys: ["SLEEP_SCORE", "READINESS_SCORE", "ACTIVITY_SCORE", "AUTH_STATUS", "REQUEST_SCORES"],
 
@@ -124,10 +166,12 @@ const message = new Message({
 					state.loading = false;
 					break;
 				case "SLEEP_SCORE":
-					state.sleep = value;
+					state.sleep   = value;
+					state.loading = false;
 					break;
 				case "READINESS_SCORE":
 					state.readiness = value;
+					state.loading   = false;
 					break;
 				case "ACTIVITY_SCORE":
 					state.activity  = value;
@@ -138,8 +182,6 @@ const message = new Message({
 		draw();
 	},
 
-	// onWritable fires once the channel to the phone is open.
-	// We send a REQUEST_SCORES trigger so the phone fetches immediately.
 	onWritable() {
 		if (this.once) return;
 		this.once = true;
@@ -149,8 +191,5 @@ const message = new Message({
 	},
 });
 
-// Redraw each minute (keeps the date current; no API call needed)
 watch.addEventListener("minutechange", () => draw());
-
-// Initial draw while we wait for data from the phone
 draw();
