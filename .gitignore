@@ -1,0 +1,13 @@
+# Build output
+build/
+*.pbw
+*.elf
+
+# Credentials — never commit
+src/pkjs/config.js
+
+# Node / npm
+node_modules/
+
+# macOS
+.DS_Store
