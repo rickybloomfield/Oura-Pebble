@@ -1,0 +1,30 @@
+{
+  "name": "oura-watchface",
+  "author": "Ricky Bloomfield",
+  "version": "1.0.0",
+  "keywords": ["pebble-app"],
+  "private": true,
+  "dependencies": {},
+  "pebble": {
+    "displayName": "Oura Watchface",
+    "uuid": "3f8a2c91-7e6b-4d5a-9c3f-1b8e2a7d4f0c",
+    "projectType": "moddable",
+    "sdkVersion": "3",
+    "enableMultiJS": true,
+    "targetPlatforms": ["emery"],
+    "capabilities": ["configurable"],
+    "watchapp": {
+      "watchface": true
+    },
+    "messageKeys": [
+      "SLEEP_SCORE",
+      "READINESS_SCORE",
+      "ACTIVITY_SCORE",
+      "AUTH_STATUS",
+      "REQUEST_SCORES"
+    ],
+    "resources": {
+      "media": []
+    }
+  }
+}

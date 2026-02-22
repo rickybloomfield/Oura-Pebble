@@ -1,20 +1,20 @@
 {
-  "name": "Oura-pebble",
+  "name": "oura-app",
   "author": "Ricky Bloomfield",
   "version": "1.0.0",
   "keywords": ["pebble-app"],
   "private": true,
   "dependencies": {},
   "pebble": {
-    "displayName": "Oura Pebble",
-    "uuid": "3f8a2c91-7e6b-4d5a-9c3f-1b8e2a7d4f0c",
+    "displayName": "Oura App",
+    "uuid": "3e9f2ce1-643b-4553-b713-526c4b7619f0",
     "projectType": "moddable",
     "sdkVersion": "3",
     "enableMultiJS": true,
     "targetPlatforms": ["emery"],
     "capabilities": ["configurable"],
     "watchapp": {
-      "watchface": true
+      "watchface": false
     },
     "messageKeys": [
       "SLEEP_SCORE",

@@ -1,6 +1,12 @@
-# Oura Scores — Pebble Time 2 Watchface
+# Oura Pebble — Pebble Time 2
 
 Displays your daily **Sleep**, **Readiness**, and **Activity** scores from Oura on your Pebble Time 2.
+
+This repo contains two Pebble projects:
+- **Oura Watchface** (`watchface/`) — a watchface that shows scores on your watch face
+- **Oura App** (`app/`) — a standalone app (launchable from the app menu)
+
+Both share the same OAuth credentials via a symlinked `shared/config.js`.
 
 Built with the [Alloy (Moddable) SDK](https://developer.repebble.com/docs/) for [rePebble](https://repebble.com).
 
@@ -28,23 +34,30 @@ from Oura and passes the auth code back to the Pebble app.
 
 Register this URL as the redirect URI in your Oura app (step 1 above).
 
-### 3. Configure `src/pkjs/index.js`
+### 3. Configure credentials
 
-Open `src/pkjs/index.js` and fill in the three constants at the top:
+Copy the example config and fill in your values:
 
-```js
-const CLIENT_ID     = 'YOUR_OURA_CLIENT_ID';
-const CLIENT_SECRET = 'YOUR_OURA_CLIENT_SECRET';
-const REDIRECT_URI  = 'https://YOUR-USERNAME.github.io/oura-pebble/config/';
+```bash
+cp shared/config.example.js shared/config.js
 ```
+
+Edit `shared/config.js` with your Client ID, Client Secret, and redirect URI. Both projects share this file via symlinks.
 
 ### 4. Build and install
 
 ```bash
 # Install the Pebble SDK toolchain first if you haven't already
-pebble build
+
+# Build the watchface
+cd watchface && pebble build
 pebble install --emulator emery          # test in emulator
 pebble install --phone YOUR_PHONE_IP     # install on device
+
+# Build the app
+cd ../app && pebble build
+pebble install --emulator emery
+pebble install --phone YOUR_PHONE_IP
 ```
 
 ### 5. Authorize Oura
@@ -103,13 +116,22 @@ appears after your morning sync).
 ## Project structure
 
 ```
-package.json              Project manifest (Alloy/Moddable)
-wscript                   Build configuration
-src/
-  embeddedjs/
-    main.js               Watch-side code (Poco rendering + messaging)
-  pkjs/
-    index.js              Phone-side code (OAuth + Oura API + sendAppMessage)
+shared/
+  config.js               OAuth credentials (gitignored)
+  config.example.js       Template — copy to config.js
+watchface/                Pebble watchface project
+  package.json            Manifest (watchface: true)
+  wscript                 Build configuration
+  src/
+    embeddedjs/
+      main.js             Watch-side code (Poco rendering + messaging)
+    pkjs/
+      index.js            Phone-side code (OAuth + Oura API + sendAppMessage)
+      config.js           Symlink → shared/config.js
+app/                      Pebble app project
+  package.json            Manifest (watchface: false, separate UUID)
+  wscript                 Build configuration
+  src/                    Same structure as watchface/src
 config/
   index.html              OAuth callback page (host on GitHub Pages)
 ```

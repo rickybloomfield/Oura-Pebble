@@ -2,9 +2,12 @@
 build/
 *.pbw
 *.elf
+.lock-waf_darwin_build
 
 # Credentials — never commit
-src/pkjs/config.js
+shared/config.js
+watchface/src/pkjs/config.js
+app/src/pkjs/config.js
 
 # Node / npm
 node_modules/
