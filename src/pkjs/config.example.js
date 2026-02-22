@@ -6,5 +6,5 @@
 module.exports = {
   CLIENT_ID:     'YOUR_OURA_CLIENT_ID',
   CLIENT_SECRET: 'YOUR_OURA_CLIENT_SECRET',
-  REDIRECT_URI:  'https://YOUR-USERNAME.github.io/oura-pebble/config/',
+  REDIRECT_URI:  'https://YOUR-USERNAME.github.io/Oura-Pebble/config/',
 };

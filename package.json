@@ -1,12 +1,12 @@
 {
-  "name": "oura-scores",
+  "name": "Oura-pebble",
   "author": "Ricky Bloomfield",
   "version": "1.0.0",
   "keywords": ["pebble-app"],
   "private": true,
   "dependencies": {},
   "pebble": {
-    "displayName": "Oura Scores",
+    "displayName": "Oura Pebble",
     "uuid": "3f8a2c91-7e6b-4d5a-9c3f-1b8e2a7d4f0c",
     "projectType": "moddable",
     "sdkVersion": "3",
