@@ -1,5 +1,5 @@
-// Oura Scores Watchface — Phone Side (runs inside the Pebble mobile app)
-// Handles OAuth 2.0, Oura API fetching, and sending scores to the watch.
+// Oura App — Phone Side (runs inside the Pebble mobile app)
+// Handles OAuth 2.0, Oura API fetching, and sending scores + history to the watch.
 
 // Credentials are loaded from config.js (gitignored).
 // Copy src/pkjs/config.example.js → src/pkjs/config.js and fill in your values.
@@ -30,60 +30,34 @@ function storeTokens(access, refresh, expiresIn) {
 
 function isTokenExpired() {
 	const expiry = localStorage.getItem('oura_token_expiry');
-	if (!expiry) return false;               // no expiry stored → assume valid
+	if (!expiry) return false;
 	return Date.now() > parseInt(expiry, 10);
 }
 
-// ---- Score cache helpers (localStorage on the phone) ----
-function getCachedScores() {
-	const raw = localStorage.getItem('oura_cached_scores');
-	if (!raw) return null;
-	try { return JSON.parse(raw); } catch (e) { return null; }
-}
-
-function cacheScores(sleep, readiness, activity) {
-	localStorage.setItem('oura_cached_scores', JSON.stringify({
-		sleep: sleep, readiness: readiness, activity: activity
-	}));
-}
-
-function sendCachedScores() {
-	const cached = getCachedScores();
-	if (!cached) return;
-	console.log('[Oura] Sending cached scores — Sleep: ' + cached.sleep
-	          + ', Readiness: ' + cached.readiness
-	          + ', Activity: ' + cached.activity);
-	Pebble.sendAppMessage({
-		AUTH_STATUS:     1,
-		SLEEP_SCORE:     cached.sleep,
-		READINESS_SCORE: cached.readiness,
-		ACTIVITY_SCORE:  cached.activity,
-	});
-}
-
-// ---- Date helper ----
+// ---- Date helpers ----
 function pad(n) { return n < 10 ? '0' + n : '' + n; }
 
-function todayISO() {
-	const d = new Date();
+function dateISO(d) {
 	return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
 }
 
-function yesterdayISO() {
-	const d = new Date();
-	d.setDate(d.getDate() - 1);
-	return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+function todayISO() { return dateISO(new Date()); }
+
+function daysAgoISO(n) {
+	var d = new Date();
+	d.setDate(d.getDate() - n);
+	return dateISO(d);
 }
 
 function tomorrowISO() {
-	const d = new Date();
+	var d = new Date();
 	d.setDate(d.getDate() + 1);
-	return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+	return dateISO(d);
 }
 
-// ---- HTTP helper ----
+// ---- HTTP helpers ----
 function xhrGet(url, token, callback) {
-	const xhr = new XMLHttpRequest();
+	var xhr = new XMLHttpRequest();
 	xhr.open('GET', url);
 	xhr.setRequestHeader('Authorization', 'Bearer ' + token);
 	xhr.onload = function () {
@@ -101,7 +75,7 @@ function xhrGet(url, token, callback) {
 }
 
 function xhrPost(url, body, callback) {
-	const xhr = new XMLHttpRequest();
+	var xhr = new XMLHttpRequest();
 	xhr.open('POST', url);
 	xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
 	xhr.onload = function () {
@@ -118,11 +92,11 @@ function xhrPost(url, body, callback) {
 
 // ---- OAuth: exchange auth code for tokens ----
 function exchangeCode(code, callback) {
-	const body = 'grant_type=authorization_code'
-	           + '&code=' + encodeURIComponent(code)
-	           + '&client_id=' + encodeURIComponent(CLIENT_ID)
-	           + '&client_secret=' + encodeURIComponent(CLIENT_SECRET)
-	           + '&redirect_uri=' + encodeURIComponent(REDIRECT_URI);
+	var body = 'grant_type=authorization_code'
+	         + '&code=' + encodeURIComponent(code)
+	         + '&client_id=' + encodeURIComponent(CLIENT_ID)
+	         + '&client_secret=' + encodeURIComponent(CLIENT_SECRET)
+	         + '&redirect_uri=' + encodeURIComponent(REDIRECT_URI);
 
 	xhrPost(TOKEN_URL, body, function (data, err) {
 		if (err || !data || !data.access_token) {
@@ -138,18 +112,17 @@ function exchangeCode(code, callback) {
 
 // ---- OAuth: refresh an expiring access token ----
 function refreshAccessToken(callback) {
-	const rt = getRefreshToken();
+	var rt = getRefreshToken();
 	if (!rt) { callback(false); return; }
 
-	const body = 'grant_type=refresh_token'
-	           + '&refresh_token=' + encodeURIComponent(rt)
-	           + '&client_id=' + encodeURIComponent(CLIENT_ID)
-	           + '&client_secret=' + encodeURIComponent(CLIENT_SECRET);
+	var body = 'grant_type=refresh_token'
+	         + '&refresh_token=' + encodeURIComponent(rt)
+	         + '&client_id=' + encodeURIComponent(CLIENT_ID)
+	         + '&client_secret=' + encodeURIComponent(CLIENT_SECRET);
 
 	xhrPost(TOKEN_URL, body, function (data, err) {
 		if (err || !data || !data.access_token) {
 			console.log('[Oura] Token refresh failed: ' + (err || 'no access_token'));
-			// Clear stale tokens so user is prompted to re-auth
 			localStorage.removeItem('oura_access_token');
 			localStorage.removeItem('oura_refresh_token');
 			callback(false);
@@ -163,7 +136,7 @@ function refreshAccessToken(callback) {
 
 // ---- Get a valid token, refreshing if needed ----
 function withValidToken(callback) {
-	const token = getAccessToken();
+	var token = getAccessToken();
 	if (!token) {
 		console.log('[Oura] No access token stored — user must authorize.');
 		Pebble.sendAppMessage({ AUTH_STATUS: 0 });
@@ -180,125 +153,306 @@ function withValidToken(callback) {
 	}
 }
 
-// ---- Oura API: fetch one endpoint ----
-function fetchScore(path, token, callback, date) {
-	date = date || todayISO();
-	const url  = API_BASE + path + '?start_date=' + date + '&end_date=' + date;
+// ---- Fetch a range of data from an API endpoint ----
+function fetchRange(path, token, startDate, endDate, callback) {
+	var url = API_BASE + path + '?start_date=' + startDate + '&end_date=' + endDate;
 	xhrGet(url, token, function (data, err) {
 		if (err === 'unauthorized') { callback(null, true); return; }
-		if (err || !data || !data.data || data.data.length === 0) {
-			callback(-1, false);
+		if (err || !data || !data.data) {
+			callback([], false);
 		} else {
-			const score = data.data[0].score;
-			callback((score != null) ? score : -1, false);
+			callback(data.data, false);
 		}
 	});
 }
 
-// ---- Fetch all three scores and send to watch ----
+// ---- Build a 7-day array from API data, mapping by date ----
+// Returns array of 7 values (index 0 = 6 days ago, index 6 = today)
+function buildHistory(records, field, defaultVal) {
+	defaultVal = (defaultVal !== undefined) ? defaultVal : -1;
+	var result = [];
+	var dateMap = {};
+	for (var i = 0; i < records.length; i++) {
+		var day = records[i].day;
+		dateMap[day] = records[i];
+	}
+	for (var d = 6; d >= 0; d--) {
+		var key = daysAgoISO(d);
+		var rec = dateMap[key];
+		if (rec && rec[field] != null) {
+			result.push(rec[field]);
+		} else {
+			result.push(defaultVal);
+		}
+	}
+	return result;
+}
+
+// ---- Get latest record with a valid field value ----
+function getLatest(records, field) {
+	for (var i = records.length - 1; i >= 0; i--) {
+		if (records[i][field] != null) return records[i][field];
+	}
+	return -1;
+}
+
+// ---- Get latest record object ----
+function getLatestRecord(records) {
+	if (!records || records.length === 0) return null;
+	return records[records.length - 1];
+}
+
+// ---- Fetch all data and send to watch ----
 function fetchAndSend(token) {
-	fetchScore('/daily_sleep', token, function (sleepScore, unauth) {
-		if (unauth) { Pebble.sendAppMessage({ AUTH_STATUS: 0 }); return; }
+	var startDate = daysAgoISO(7);  // extra day for timezone edge cases
+	var endDate = tomorrowISO();
+	var pending = 5;
+	var unauthorized = false;
 
-		fetchScore('/daily_readiness', token, function (readinessScore, unauth2) {
-			if (unauth2) { Pebble.sendAppMessage({ AUTH_STATUS: 0 }); return; }
+	var dailySleep = [];
+	var dailyReadiness = [];
+	var dailyActivity = [];
+	var dailyStress = [];
+	var sleepPeriods = [];
 
-			// Query activity from yesterday to tomorrow to handle timezone edge cases
-			var actUrl = API_BASE + '/daily_activity?start_date=' + yesterdayISO() + '&end_date=' + tomorrowISO();
-			xhrGet(actUrl, token, function (data, err) {
-				if (err === 'unauthorized') { Pebble.sendAppMessage({ AUTH_STATUS: 0 }); return; }
+	function done() {
+		pending--;
+		if (pending > 0) return;
 
-				var activityScore = -1;
-				if (!err && data && data.data && data.data.length > 0) {
-					// Take the latest entry with a valid score
-					for (var i = data.data.length - 1; i >= 0; i--) {
-						if (data.data[i].score != null) {
-							activityScore = data.data[i].score;
-							break;
-						}
-					}
-				}
+		if (unauthorized) {
+			Pebble.sendAppMessage({ AUTH_STATUS: 0 });
+			return;
+		}
 
-				cacheScores(sleepScore, readinessScore, activityScore);
-				console.log('[Oura] Scores — Sleep: ' + sleepScore
-				          + ', Readiness: ' + readinessScore
-				          + ', Activity: ' + activityScore);
-				Pebble.sendAppMessage({
-					AUTH_STATUS:     1,
-					SLEEP_SCORE:     sleepScore,
-					READINESS_SCORE: readinessScore,
-					ACTIVITY_SCORE:  activityScore,
-				});
-			});
+		// Build history arrays (7 days)
+		var sleepHist = buildHistory(dailySleep, 'score');
+		var readinessHist = buildHistory(dailyReadiness, 'score');
+		var activityHist = buildHistory(dailyActivity, 'score');
+		var stressHighHist = buildHistory(dailyStress, 'stress_high', 0);
+		var stressRestoreHist = buildHistory(dailyStress, 'recovery_high', 0);
+
+		// Convert stress from seconds to minutes
+		for (var s = 0; s < 7; s++) {
+			stressHighHist[s] = (stressHighHist[s] > 0) ? Math.round(stressHighHist[s] / 60) : 0;
+			stressRestoreHist[s] = (stressRestoreHist[s] > 0) ? Math.round(stressRestoreHist[s] / 60) : 0;
+		}
+
+		// Today's scores
+		var sleepScore = sleepHist[6];
+		var readinessScore = readinessHist[6];
+		var activityScore = activityHist[6];
+
+		// Detailed metrics from sleep period data
+		var latestSleep = getLatestRecord(sleepPeriods);
+		var sleepTotal = -1, sleepInBed = -1, sleepEfficiency = -1, sleepHR = -1;
+		if (latestSleep) {
+			sleepTotal = (latestSleep.total_sleep_duration != null) ?
+				Math.round(latestSleep.total_sleep_duration / 60) : -1;
+			sleepInBed = (latestSleep.time_in_bed != null) ?
+				Math.round(latestSleep.time_in_bed / 60) : -1;
+			sleepEfficiency = (latestSleep.efficiency != null) ?
+				latestSleep.efficiency : -1;
+			sleepHR = (latestSleep.average_heart_rate != null) ?
+				Math.round(latestSleep.average_heart_rate) : -1;
+		}
+
+		// Readiness metrics from sleep period data + readiness data
+		var readinessHR = sleepHR; // same source
+		var readinessHRV = -1, readinessResp = -1;
+		if (latestSleep) {
+			readinessHRV = (latestSleep.average_hrv != null) ?
+				Math.round(latestSleep.average_hrv) : -1;
+			readinessResp = (latestSleep.average_breath != null) ?
+				Math.round(latestSleep.average_breath * 10) : -1;
+		}
+
+		// Temperature deviation from readiness data
+		var readinessTemp = -100; // sentinel for missing
+		var latestReadiness = getLatestRecord(dailyReadiness);
+		if (latestReadiness && latestReadiness.temperature_deviation != null) {
+			readinessTemp = Math.round(latestReadiness.temperature_deviation * 10);
+		}
+
+		// Activity metrics
+		var latestActivity = getLatestRecord(dailyActivity);
+		var actCal = -1, actGoalCal = -1, actBurn = -1, actTime = -1, actSteps = -1;
+		if (latestActivity) {
+			actCal = (latestActivity.active_calories != null) ?
+				latestActivity.active_calories : -1;
+			actGoalCal = (latestActivity.target_calories != null) ?
+				latestActivity.target_calories : -1;
+			actBurn = (latestActivity.total_calories != null) ?
+				latestActivity.total_calories : -1;
+			actSteps = (latestActivity.steps != null) ?
+				latestActivity.steps : -1;
+			// Activity time: high + medium activity time in minutes
+			var highTime = latestActivity.high_activity_time || 0;
+			var medTime = latestActivity.medium_activity_time || 0;
+			actTime = Math.round((highTime + medTime) / 60);
+		}
+
+		// Build message
+		var msg = {
+			AUTH_STATUS: 1,
+			SLEEP_SCORE: sleepScore,
+			READINESS_SCORE: readinessScore,
+			ACTIVITY_SCORE: activityScore,
+			SLEEP_TOTAL: sleepTotal,
+			SLEEP_IN_BED: sleepInBed,
+			SLEEP_EFFICIENCY: sleepEfficiency,
+			SLEEP_HR: sleepHR,
+			READINESS_HR: readinessHR,
+			READINESS_HRV: readinessHRV,
+			READINESS_TEMP: readinessTemp,
+			READINESS_RESP: readinessResp,
+			ACTIVITY_CAL: actCal,
+			ACTIVITY_GOAL_CAL: actGoalCal,
+			ACTIVITY_BURN: actBurn,
+			ACTIVITY_TIME: actTime,
+			ACTIVITY_STEPS: actSteps,
+		};
+
+		// Add history arrays using integer key IDs
+		// (appKeys doesn't include array element entries, only base keys)
+		// Base IDs from generated appinfo.json messageKeys:
+		var HIST = { SL: 10000, RD: 10007, AC: 10014, SH: 10021, SR: 10028 };
+		for (var i = 0; i < 7; i++) {
+			msg[HIST.SL + i] = sleepHist[i];
+			msg[HIST.RD + i] = readinessHist[i];
+			msg[HIST.AC + i] = activityHist[i];
+			msg[HIST.SH + i] = stressHighHist[i];
+			msg[HIST.SR + i] = stressRestoreHist[i];
+		}
+
+		console.log('[Oura] Sending — Sleep: ' + sleepScore
+		          + ', Readiness: ' + readinessScore
+		          + ', Activity: ' + activityScore);
+
+		Pebble.sendAppMessage(msg, function () {
+			console.log('[Oura] Message sent successfully.');
+		}, function (e) {
+			console.log('[Oura] Message send failed: ' + JSON.stringify(e));
 		});
+	}
+
+	fetchRange('/daily_sleep', token, startDate, endDate, function (data, unauth) {
+		if (unauth) unauthorized = true;
+		else dailySleep = data;
+		done();
+	});
+
+	fetchRange('/daily_readiness', token, startDate, endDate, function (data, unauth) {
+		if (unauth) unauthorized = true;
+		else dailyReadiness = data;
+		done();
+	});
+
+	fetchRange('/daily_activity', token, startDate, endDate, function (data, unauth) {
+		if (unauth) unauthorized = true;
+		else dailyActivity = data;
+		done();
+	});
+
+	fetchRange('/daily_stress', token, startDate, endDate, function (data, unauth) {
+		if (unauth) unauthorized = true;
+		else dailyStress = data;
+		done();
+	});
+
+	fetchRange('/sleep', token, startDate, endDate, function (data, unauth) {
+		if (unauth) unauthorized = true;
+		else sleepPeriods = data;
+		done();
 	});
 }
 
 // ---- Simulator detection ----
 function isSimulator() {
 	var token = Pebble.getAccountToken();
-	// Emulator returns a dummy token like "0123456789abcdef0123456789abcdef"
 	return !token || /^0+$/.test(token) || token === '0123456789abcdef0123456789abcdef';
 }
 
-function sendMockScores() {
-	console.log('[Oura] Simulator detected — sending mock scores.');
-	Pebble.sendAppMessage({
-		AUTH_STATUS:     1,
-		SLEEP_SCORE:     88,
+function sendMockData() {
+	console.log('[Oura] Simulator detected — sending mock data.');
+	var msg = {
+		AUTH_STATUS: 1,
+		SLEEP_SCORE: 88,
 		READINESS_SCORE: 72,
-		ACTIVITY_SCORE:  65,
-	});
+		ACTIVITY_SCORE: 65,
+		SLEEP_TOTAL: 432,      // 7h 12m
+		SLEEP_IN_BED: 480,     // 8h
+		SLEEP_EFFICIENCY: 90,
+		SLEEP_HR: 58,
+		READINESS_HR: 58,
+		READINESS_HRV: 45,
+		READINESS_TEMP: -2,    // -0.2 C
+		READINESS_RESP: 158,   // 15.8 breaths/min
+		ACTIVITY_CAL: 320,
+		ACTIVITY_GOAL_CAL: 500,
+		ACTIVITY_BURN: 2100,
+		ACTIVITY_TIME: 45,
+		ACTIVITY_STEPS: 8432,
+	};
+
+	// Mock history arrays
+	var sleepHist     = [75, 82, 90, 68, 85, 79, 88];
+	var readinessHist = [80, 65, 72, 78, 60, 85, 72];
+	var activityHist  = [55, 70, 45, 80, 62, 75, 65];
+	var stressHigh    = [25, 40, 30, 15, 45, 35, 20];
+	var stressRestore = [60, 45, 55, 70, 35, 50, 65];
+
+	var HIST = { SL: 10000, RD: 10007, AC: 10014, SH: 10021, SR: 10028 };
+	for (var i = 0; i < 7; i++) {
+		msg[HIST.SL + i] = sleepHist[i];
+		msg[HIST.RD + i] = readinessHist[i];
+		msg[HIST.AC + i] = activityHist[i];
+		msg[HIST.SH + i] = stressHigh[i];
+		msg[HIST.SR + i] = stressRestore[i];
+	}
+
+	Pebble.sendAppMessage(msg);
 }
 
 // ---- Pebble lifecycle events ----
 
-// ---- Periodic refresh (every 30 minutes) ----
 var REFRESH_INTERVAL = 30 * 60 * 1000;
 
 function refreshScores() {
-	if (isSimulator()) { sendMockScores(); return; }
+	if (isSimulator()) { sendMockData(); return; }
 	withValidToken(function (token) {
 		fetchAndSend(token);
 	});
 }
 
-// Phone is ready — send cached scores immediately, then fetch fresh
 Pebble.addEventListener('ready', function () {
 	console.log('[Oura] pkjs ready.');
-	if (isSimulator()) { sendMockScores(); return; }
-	sendCachedScores();
+	if (isSimulator()) { sendMockData(); return; }
 	refreshScores();
 	setInterval(refreshScores, REFRESH_INTERVAL);
 });
 
-// Watch requested a refresh (sends REQUEST_SCORES: 1 via pebble/message)
 Pebble.addEventListener('appmessage', function (e) {
 	if (e.payload.REQUEST_SCORES) {
-		sendCachedScores();
 		refreshScores();
 	}
 });
 
-// User opens app settings in the Pebble app — kick off the OAuth flow
 Pebble.addEventListener('showConfiguration', function () {
-	const authUrl = AUTHORIZE_URL
-	              + '?response_type=code'
-	              + '&client_id=' + encodeURIComponent(CLIENT_ID)
-	              + '&redirect_uri=' + encodeURIComponent(REDIRECT_URI)
-	              + '&scope=' + SCOPE;
+	var authUrl = AUTHORIZE_URL
+	            + '?response_type=code'
+	            + '&client_id=' + encodeURIComponent(CLIENT_ID)
+	            + '&redirect_uri=' + encodeURIComponent(REDIRECT_URI)
+	            + '&scope=' + encodeURIComponent(SCOPE);
 
 	console.log('[Oura] Opening authorization URL.');
 	Pebble.openURL(authUrl);
 });
 
-// Pebble app returns from the OAuth webview
-// config/index.html redirects to pebblejs://close#{"code":"..."}
 Pebble.addEventListener('webviewclosed', function (e) {
 	if (!e.response || e.response === 'CANCELLED') return;
 
 	try {
-		const data = JSON.parse(decodeURIComponent(e.response));
+		var data = JSON.parse(decodeURIComponent(e.response));
 		if (data.code) {
 			console.log('[Oura] Received auth code — exchanging for tokens.');
 			exchangeCode(data.code, function (success) {

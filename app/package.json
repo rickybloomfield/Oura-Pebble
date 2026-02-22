@@ -17,11 +17,29 @@
       "watchface": false
     },
     "messageKeys": [
+      "AUTH_STATUS",
+      "REQUEST_SCORES",
       "SLEEP_SCORE",
       "READINESS_SCORE",
       "ACTIVITY_SCORE",
-      "AUTH_STATUS",
-      "REQUEST_SCORES"
+      "SLEEP_HISTORY[7]",
+      "READINESS_HISTORY[7]",
+      "ACTIVITY_HISTORY[7]",
+      "STRESS_HIGH_HISTORY[7]",
+      "STRESS_RESTORE_HISTORY[7]",
+      "SLEEP_TOTAL",
+      "SLEEP_IN_BED",
+      "SLEEP_EFFICIENCY",
+      "SLEEP_HR",
+      "READINESS_HR",
+      "READINESS_HRV",
+      "READINESS_TEMP",
+      "READINESS_RESP",
+      "ACTIVITY_CAL",
+      "ACTIVITY_GOAL_CAL",
+      "ACTIVITY_BURN",
+      "ACTIVITY_TIME",
+      "ACTIVITY_STEPS"
     ],
     "resources": {
       "media": []
