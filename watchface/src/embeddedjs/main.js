@@ -31,13 +31,16 @@ const fontScore = new render.Font("Roboto-Condensed", 21);
 const fontLabel = new render.Font("Gothic-Regular", 14);
 const fontDate  = new render.Font("Gothic-Regular", 18);
 
-// ---- Layout ----
-const RING_R  = 28;                     // outer radius
-const RING_W  = 6;                      // ring thickness
+// ---- Layout (triangle: two on top, one centered below) ----
+const RING_R  = 36;                     // outer radius
+const RING_W  = 7;                      // ring thickness
 const RING_IR = RING_R - RING_W;        // inner radius
-const RING_Y  = 138;                    // vertical center of rings
-const RING_XS = [34, 100, 166];         // horizontal centers
-const LABEL_Y = RING_Y + RING_R + 6;
+
+const TOP_Y   = 114;                    // vertical center of top rings
+const BOT_Y   = 178;                    // vertical center of bottom ring
+const TOP_X1  = (W >> 1) - 44;          // Readiness (left)
+const TOP_X2  = (W >> 1) + 44;          // Sleep (right)
+const BOT_X   = (W >> 1);              // Activity (center)
 
 // ---- App state ----
 let state = {
@@ -48,10 +51,8 @@ let state = {
 	loading:   true,
 };
 
-// ---- Crown ----
+// ---- Icons (cy = top of icon, ~10px tall) ----
 function drawCrown(cx, cy, color) {
-	// Simple 3-point crown, ~14px wide, ~9px tall
-	// cy = top of crown
 	const b = cy + 8;
 	const m = cy + 5;
 	render.drawLine(cx - 7, b, cx - 5, cy, color, 2);
@@ -63,8 +64,39 @@ function drawCrown(cx, cy, color) {
 	render.drawLine(cx - 7, b, cx + 7, b, color, 2);
 }
 
-// ---- Ring ----
-function drawRing(cx, cy, score, label) {
+function drawMoon(cx, cy, color) {
+	// Crescent moon via two filled circles
+	const my = cy + 5;
+	render.drawCircle(color, cx - 1, my, 5);
+	render.drawCircle(WHITE, cx + 3, my - 2, 5);
+}
+
+function drawLeaf(cx, cy, color) {
+	// Sprouting plant / seedling
+	// Stem
+	render.drawLine(cx - 1, cy + 9, cx, cy + 3, color, 2);
+	// Leaf curving up-right
+	render.drawLine(cx, cy + 3, cx + 4, cy, color, 2);
+	render.drawLine(cx + 4, cy, cx + 5, cy + 2, color, 2);
+	render.drawLine(cx + 5, cy + 2, cx + 1, cy + 5, color, 2);
+}
+
+function drawShoe(cx, cy, color) {
+	// Running shoe profile
+	// Sole
+	render.drawLine(cx - 6, cy + 8, cx + 3, cy + 8, color, 2);
+	// Toe
+	render.drawLine(cx + 3, cy + 8, cx + 6, cy + 5, color, 2);
+	// Top
+	render.drawLine(cx + 6, cy + 5, cx, cy + 3, color, 2);
+	// Ankle
+	render.drawLine(cx, cy + 3, cx - 4, cy, color, 2);
+	// Heel
+	render.drawLine(cx - 6, cy + 2, cx - 6, cy + 8, color, 2);
+}
+
+// ---- Ring (icon + score + label inside) ----
+function drawRing(cx, cy, score, label, icon) {
 	const sc = scoreColor(score);
 
 	// Gray track (full circle)
@@ -79,21 +111,20 @@ function drawRing(cx, cy, score, label) {
 	// White center (creates donut)
 	render.drawCircle(WHITE, cx, cy, RING_IR);
 
-	// Score text
-	const scoreText = (score >= 0) ? String(score) : "--";
-	const tw = render.getTextWidth(scoreText, fontScore);
-
+	// Icon or crown
 	if (score >= 85) {
-		// Crown above score
-		drawCrown(cx, cy - 14, GOLD);
-		render.drawText(scoreText, fontScore, BLACK, cx - (tw >> 1), cy - 2);
-	} else {
-		render.drawText(scoreText, fontScore, BLACK, cx - (tw >> 1), cy - 9);
+		drawCrown(cx, cy - 20, GOLD);
+	} else if (score >= 0) {
+		icon(cx, cy - 20, BLACK);
 	}
 
-	// Label below ring
+	// Score text + label
+	const scoreText = (score >= 0) ? String(score) : "--";
+	const tw = render.getTextWidth(scoreText, fontScore);
+	render.drawText(scoreText, fontScore, BLACK, cx - (tw >> 1), cy - 6);
+
 	const lw = render.getTextWidth(label, fontLabel);
-	render.drawText(label, fontLabel, BLACK, cx - (lw >> 1), LABEL_Y);
+	render.drawText(label, fontLabel, DGRAY, cx - (lw >> 1), cy + 10);
 }
 
 // ---- Time & date ----
@@ -130,11 +161,11 @@ function draw() {
 	// Date
 	const dateStr = getDateString();
 	const dw = render.getTextWidth(dateStr, fontDate);
-	render.drawText(dateStr, fontDate, BLACK, (W - dw) >> 1, 66);
+	render.drawText(dateStr, fontDate, BLACK, (W - dw) >> 1, 54);
 
 	if (!state.auth) {
 		const lines = ["Not connected.", "Open app settings", "to authorize Oura."];
-		let ly = RING_Y - 20;
+		let ly = 136;
 		for (let i = 0; i < lines.length; i++) {
 			const lw = render.getTextWidth(lines[i], fontLabel);
 			render.drawText(lines[i], fontLabel, DGRAY, (W - lw) >> 1, ly);
@@ -143,11 +174,11 @@ function draw() {
 	} else if (state.loading) {
 		const msg = "Loading...";
 		const mw = render.getTextWidth(msg, fontLabel);
-		render.drawText(msg, fontLabel, MGRAY, (W - mw) >> 1, RING_Y - 8);
+		render.drawText(msg, fontLabel, MGRAY, (W - mw) >> 1, 142);
 	} else {
-		drawRing(RING_XS[0], RING_Y, state.sleep, "Sleep");
-		drawRing(RING_XS[1], RING_Y, state.readiness, "Readiness");
-		drawRing(RING_XS[2], RING_Y, state.activity, "Activity");
+		drawRing(TOP_X1, TOP_Y, state.readiness, "Ready", drawLeaf);
+		drawRing(TOP_X2, TOP_Y, state.sleep, "Sleep", drawMoon);
+		drawRing(BOT_X,  BOT_Y, state.activity, "Active", drawShoe);
 	}
 
 	render.end();
