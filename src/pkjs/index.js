@@ -227,12 +227,30 @@ function fetchAndSend(token) {
 	});
 }
 
+// ---- Simulator detection ----
+function isSimulator() {
+	var token = Pebble.getAccountToken();
+	// Emulator returns a dummy token like "0123456789abcdef0123456789abcdef"
+	return !token || /^0+$/.test(token) || token === '0123456789abcdef0123456789abcdef';
+}
+
+function sendMockScores() {
+	console.log('[Oura] Simulator detected — sending mock scores.');
+	Pebble.sendAppMessage({
+		AUTH_STATUS:     1,
+		SLEEP_SCORE:     88,
+		READINESS_SCORE: 72,
+		ACTIVITY_SCORE:  65,
+	});
+}
+
 // ---- Pebble lifecycle events ----
 
 // ---- Periodic refresh (every 30 minutes) ----
 var REFRESH_INTERVAL = 30 * 60 * 1000;
 
 function refreshScores() {
+	if (isSimulator()) { sendMockScores(); return; }
 	withValidToken(function (token) {
 		fetchAndSend(token);
 	});
@@ -241,6 +259,7 @@ function refreshScores() {
 // Phone is ready — send cached scores immediately, then fetch fresh
 Pebble.addEventListener('ready', function () {
 	console.log('[Oura] pkjs ready.');
+	if (isSimulator()) { sendMockScores(); return; }
 	sendCachedScores();
 	refreshScores();
 	setInterval(refreshScores, REFRESH_INTERVAL);

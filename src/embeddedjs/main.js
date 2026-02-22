@@ -26,7 +26,7 @@ function scoreColor(s) {
 }
 
 // ---- Fonts ----
-const fontTime  = new render.Font("Bitham-Black", 36);
+const fontTime  = new render.Font("Bitham-Black", 30);
 const fontScore = new render.Font("Roboto-Condensed", 21);
 const fontLabel = new render.Font("Gothic-Regular", 14);
 const fontDate  = new render.Font("Gothic-Regular", 14);
