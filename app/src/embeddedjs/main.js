@@ -160,8 +160,8 @@ function makeBtn() {
 				else if (type === "select") { scr = CATS[idx]; scrollY = 0; makeBtn(); draw(); }
 			} else {
 				if (type === "back") { scr = "list"; scrollY = 0; makeBtn(); draw(); }
-				else if (type === "up") { scrollY = Math.max(0, scrollY - 40); draw(); }
-				else if (type === "down") { scrollY = Math.min(60, scrollY + 40); draw(); }
+				else if (type === "up") { scrollY = Math.max(0, scrollY - 20); draw(); }
+				else if (type === "down") { scrollY = Math.min(60, scrollY + 20); draw(); }
 			}
 		}
 	});
