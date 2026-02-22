@@ -12,6 +12,7 @@
     "sdkVersion": "3",
     "enableMultiJS": true,
     "targetPlatforms": ["emery"],
+    "capabilities": ["configurable"],
     "watchapp": {
       "watchface": true
     },
