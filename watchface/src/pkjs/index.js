@@ -30,8 +30,8 @@ function storeTokens(access, refresh, expiresIn) {
 
 function isTokenExpired() {
 	const expiry = localStorage.getItem('oura_token_expiry');
-	if (!expiry) return false;               // no expiry stored → assume valid
-	return Date.now() > parseInt(expiry, 10);
+	if (!expiry) return true;                // no expiry stored → assume expired
+	return Date.now() > parseInt(expiry, 10) - 60000;  // refresh 1min early
 }
 
 // ---- Score cache helpers (localStorage on the phone) ----
@@ -196,17 +196,17 @@ function fetchScore(path, token, callback, date) {
 }
 
 // ---- Fetch all three scores and send to watch ----
-function fetchAndSend(token) {
+function doFetchAndSend(token) {
 	fetchScore('/daily_sleep', token, function (sleepScore, unauth) {
-		if (unauth) { Pebble.sendAppMessage({ AUTH_STATUS: 0 }); return; }
+		if (unauth) { handleUnauth(); return; }
 
 		fetchScore('/daily_readiness', token, function (readinessScore, unauth2) {
-			if (unauth2) { Pebble.sendAppMessage({ AUTH_STATUS: 0 }); return; }
+			if (unauth2) { handleUnauth(); return; }
 
 			// Query activity from yesterday to tomorrow to handle timezone edge cases
 			var actUrl = API_BASE + '/daily_activity?start_date=' + yesterdayISO() + '&end_date=' + tomorrowISO();
 			xhrGet(actUrl, token, function (data, err) {
-				if (err === 'unauthorized') { Pebble.sendAppMessage({ AUTH_STATUS: 0 }); return; }
+				if (err === 'unauthorized') { handleUnauth(); return; }
 
 				var activityScore = -1;
 				if (!err && data && data.data && data.data.length > 0) {
@@ -232,6 +232,32 @@ function fetchAndSend(token) {
 			});
 		});
 	});
+}
+
+// On 401, try refreshing the token once before giving up
+var _retrying = false;
+function handleUnauth() {
+	if (_retrying) {
+		console.log('[Oura] Still unauthorized after refresh — user must re-auth.');
+		_retrying = false;
+		Pebble.sendAppMessage({ AUTH_STATUS: 0 });
+		return;
+	}
+	console.log('[Oura] Got 401 — attempting token refresh.');
+	_retrying = true;
+	refreshAccessToken(function (success) {
+		if (success) {
+			doFetchAndSend(getAccessToken());
+		} else {
+			_retrying = false;
+			Pebble.sendAppMessage({ AUTH_STATUS: 0 });
+		}
+	});
+}
+
+function fetchAndSend(token) {
+	_retrying = false;
+	doFetchAndSend(token);
 }
 
 // ---- Simulator detection ----

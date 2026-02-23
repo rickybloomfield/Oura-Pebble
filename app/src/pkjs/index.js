@@ -30,8 +30,8 @@ function storeTokens(access, refresh, expiresIn) {
 
 function isTokenExpired() {
 	const expiry = localStorage.getItem('oura_token_expiry');
-	if (!expiry) return false;
-	return Date.now() > parseInt(expiry, 10);
+	if (!expiry) return true;                // no expiry stored → assume expired
+	return Date.now() > parseInt(expiry, 10) - 60000;  // refresh 1min early
 }
 
 // ---- Date helpers ----
@@ -203,7 +203,14 @@ function getLatestRecord(records) {
 }
 
 // ---- Fetch all data and send to watch ----
+var _retrying = false;
+
 function fetchAndSend(token) {
+	_retrying = false;
+	doFetchAndSend(token);
+}
+
+function doFetchAndSend(token) {
 	var startDate = daysAgoISO(7);  // extra day for timezone edge cases
 	var endDate = tomorrowISO();
 	var pending = 5;
@@ -220,7 +227,22 @@ function fetchAndSend(token) {
 		if (pending > 0) return;
 
 		if (unauthorized) {
-			Pebble.sendAppMessage({ AUTH_STATUS: 0 });
+			if (_retrying) {
+				console.log('[Oura] Still unauthorized after refresh — user must re-auth.');
+				_retrying = false;
+				Pebble.sendAppMessage({ AUTH_STATUS: 0 });
+			} else {
+				console.log('[Oura] Got 401 — attempting token refresh.');
+				_retrying = true;
+				refreshAccessToken(function (success) {
+					if (success) {
+						doFetchAndSend(getAccessToken());
+					} else {
+						_retrying = false;
+						Pebble.sendAppMessage({ AUTH_STATUS: 0 });
+					}
+				});
+			}
 			return;
 		}
 
