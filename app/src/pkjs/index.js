@@ -111,7 +111,8 @@ function exchangeCode(code, callback) {
 }
 
 // ---- OAuth: refresh an expiring access token ----
-function refreshAccessToken(callback) {
+function refreshAccessToken(callback, _attempt) {
+	_attempt = _attempt || 1;
 	var rt = getRefreshToken();
 	if (!rt) { callback(false); return; }
 
@@ -122,9 +123,21 @@ function refreshAccessToken(callback) {
 
 	xhrPost(TOKEN_URL, body, function (data, err) {
 		if (err || !data || !data.access_token) {
-			console.log('[Oura] Token refresh failed: ' + (err || 'no access_token'));
-			localStorage.removeItem('oura_access_token');
-			localStorage.removeItem('oura_refresh_token');
+			console.log('[Oura] Token refresh failed (attempt ' + _attempt + '): ' + (err || 'no access_token'));
+			// Retry on transient errors up to 3 times
+			if (_attempt < 3 && err && (err === 'network_error' || err === 'parse_error')) {
+				console.log('[Oura] Retrying refresh in 5s...');
+				setTimeout(function() { refreshAccessToken(callback, _attempt + 1); }, 5000);
+				return;
+			}
+			// Only wipe tokens on definitive server rejection, not transient errors
+			if (!err || (err !== 'network_error' && err !== 'parse_error')) {
+				console.log('[Oura] Server rejected refresh — clearing tokens.');
+				localStorage.removeItem('oura_access_token');
+				localStorage.removeItem('oura_refresh_token');
+			} else {
+				console.log('[Oura] Transient error — keeping tokens for next cycle.');
+			}
 			callback(false);
 		} else {
 			storeTokens(data.access_token, data.refresh_token, data.expires_in);
@@ -145,8 +158,14 @@ function withValidToken(callback) {
 	if (isTokenExpired()) {
 		console.log('[Oura] Token expired — attempting refresh.');
 		refreshAccessToken(function (success) {
-			if (success) { callback(getAccessToken()); }
-			else         { Pebble.sendAppMessage({ AUTH_STATUS: 0 }); }
+			if (success) {
+				callback(getAccessToken());
+			} else if (getRefreshToken()) {
+				// Transient failure — tokens kept, will retry next cycle
+				console.log('[Oura] Refresh failed (transient) — will retry next cycle.');
+			} else {
+				Pebble.sendAppMessage({ AUTH_STATUS: 0 });
+			}
 		});
 	} else {
 		callback(token);
@@ -237,6 +256,9 @@ function doFetchAndSend(token) {
 				refreshAccessToken(function (success) {
 					if (success) {
 						doFetchAndSend(getAccessToken());
+					} else if (getRefreshToken()) {
+						_retrying = false;
+						console.log('[Oura] Refresh failed (transient) — will retry next cycle.');
 					} else {
 						_retrying = false;
 						Pebble.sendAppMessage({ AUTH_STATUS: 0 });
@@ -391,7 +413,10 @@ function doFetchAndSend(token) {
 // ---- Simulator detection ----
 function isSimulator() {
 	var token = Pebble.getAccountToken();
-	return !token || /^0+$/.test(token) || token === '0123456789abcdef0123456789abcdef';
+	// Only match known emulator patterns — default to real device
+	// (Rebble may return null/empty on real hardware)
+	if (typeof token !== 'string' || token.length === 0) return false;
+	return /^0+$/.test(token) || token === '0123456789abcdef0123456789abcdef';
 }
 
 function sendMockData() {

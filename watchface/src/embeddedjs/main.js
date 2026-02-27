@@ -3,6 +3,7 @@
 
 import Poco from "commodetto/Poco";
 import Message from "pebble/message";
+import Timer from "timer";
 
 const render = new Poco(screen);
 
@@ -41,6 +42,10 @@ const BOT_Y   = 178;                    // vertical center of bottom ring
 const TOP_X1  = (W >> 1) - 44;          // Readiness (left)
 const TOP_X2  = (W >> 1) + 44;          // Sleep (right)
 const BOT_X   = (W >> 1);              // Activity (center)
+
+// ---- Update indicator ----
+let _updateFlash = false;
+let _flashTimer;
 
 // ---- App state ----
 let state = {
@@ -181,6 +186,9 @@ function draw() {
 		drawRing(BOT_X,  BOT_Y, state.activity, "Active", drawShoe);
 	}
 
+	if (_updateFlash)
+		render.fillRectangle(render.makeColor(0, 180, 80), W - 14, 4, 8, 8);
+
 	render.end();
 }
 
@@ -210,6 +218,13 @@ const message = new Message({
 					break;
 			}
 		});
+		_updateFlash = true;
+		if (_flashTimer) Timer.clear(_flashTimer);
+		_flashTimer = Timer.set(() => {
+			_updateFlash = false;
+			_flashTimer = undefined;
+			draw();
+		}, 2000);
 		draw();
 	},
 
@@ -222,5 +237,15 @@ const message = new Message({
 	},
 });
 
-watch.addEventListener("minutechange", () => draw());
+let _refreshMin = 0;
+watch.addEventListener("minutechange", () => {
+	_refreshMin++;
+	if (_refreshMin >= 30 && message.once) {
+		_refreshMin = 0;
+		const m = new Map;
+		m.set("REQUEST_SCORES", 1);
+		message.write(m);
+	}
+	draw();
+});
 draw();
