@@ -85,8 +85,21 @@ class MsgPort extends Behavior {
 	}
 }
 
+function listRowAt(y) {
+	var i = Math.floor((y - 30) / 49);
+	return (i >= 0 && i < 4) ? i : -1;
+}
+
 class ListPort extends Behavior {
 	onDisplaying(port) { port.focus(); }
+	onTouchBegan(port, id, x, y) {
+		this.row = listRowAt(y);
+		if (this.row >= 0) { idx = this.row; port.invalidate(); }
+	}
+	onTouchEnded(port, id, x, y) {
+		var i = listRowAt(y);
+		if (i >= 0 && i === this.row) app_.delegate("showDetail", CATS[i]);
+	}
 	onDraw(port) {
 		port.fillColor(WHITE, 0, 0, port.width, port.height);
 		var tw = port.measureString("Oura", stD).width;
@@ -115,6 +128,7 @@ class DetailPort extends Behavior {
 	onDraw(port) {
 		var d = this.data;
 		port.fillColor(WHITE, 0, 0, port.width, 240);
+		port.drawString("<", stD, DGRAY, 10, 4, 20);
 		var tw = port.measureString(d.title, stD).width;
 		port.drawString(d.title, stD, BLACK, (port.width - tw) >> 1, 4, tw + 4);
 		var ss = d.score >= 0 ? String(d.score) : "--";
@@ -134,6 +148,7 @@ class StressPort extends Behavior {
 	onMeasureVertically() { return 225; }
 	onDraw(port) {
 		port.fillColor(WHITE, 0, 0, port.width, 225);
+		port.drawString("<", stD, DGRAY, 10, 4, 20);
 		var tw = port.measureString("Stress", stD).width;
 		port.drawString("Stress", stD, BLACK, (port.width - tw) >> 1, 4, tw + 4);
 		var labs = dayLabels();
@@ -150,6 +165,20 @@ class ScrollBhv extends Behavior {
 	onPressDown(scroller) { scroller.scrollBy(0, 20); return true; }
 	onPressUp(scroller) { scroller.scrollBy(0, -20); return true; }
 	onPressBack() { app_.delegate("showList"); return true; }
+	onTouchBegan(scroller, id, x, y) {
+		this.anchor = y;
+		this.base = scroller.scroll.y;
+		this.moved = false;
+	}
+	onTouchMoved(scroller, id, x, y) {
+		var dy = y - this.anchor;
+		if (dy > 5 || dy < -5) this.moved = true;
+		if (this.moved) scroller.scrollTo(0, this.base - dy);
+	}
+	onTouchEnded(scroller, id, x, y) {
+		// tap (no drag) on the back chevron zone returns to the list
+		if (!this.moved && this.base <= 4 && x < 44 && y < 28) app_.delegate("showList");
+	}
 }
 
 var KS = [
