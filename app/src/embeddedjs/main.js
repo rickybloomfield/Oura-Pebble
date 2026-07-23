@@ -1,6 +1,5 @@
 // Oura App — Watch Side (PIU)
 import Message from "pebble/message";
-import Timer from "timer";
 
 var WHITE = "#FFFFFF", BLACK = "#000000", TRACK = "#E1E1E1",
     DGRAY = "#6E6E6E", HILIT = "#B4DCFF", GREEN = "#00B450", ORANGE = "#F09600";
@@ -19,7 +18,7 @@ var stL = new Style({ font: "14px Gothic" });
 var stD = new Style({ font: "18px Gothic" });
 
 var idx = 0, app_ = null, msg_ = null, _refreshMin = 0;
-var _updateFlash = false, _flashTimer;
+var _flashTime = 0;
 var CATS = ["readiness","sleep","activity","stress"];
 var LABS = ["Readiness","Sleep","Activity","Stress"];
 var S = {
@@ -93,7 +92,7 @@ class ListPort extends Behavior {
 			}
 			port.drawString(">", stS, BLACK, port.width - 20, ry + 14, 20);
 		}
-		if (_updateFlash) port.fillColor(GREEN, port.width - 14, 4, 8, 8);
+		if (_flashTime && (Date.now() - _flashTime < 3000)) port.fillColor(GREEN, port.width - 14, 4, 8, 8);
 	}
 }
 
@@ -114,7 +113,7 @@ class DetailPort extends Behavior {
 		drawRow(port, d.m2[0], s(d.m2[1], d.m2[2]), 172);
 		drawRow(port, d.m3[0], s(d.m3[1], d.m3[2]), 194);
 		drawRow(port, d.m4[0], s(d.m4[1], d.m4[2]), 216);
-		if (_updateFlash) port.fillColor(GREEN, port.width - 14, 4, 8, 8);
+		if (_flashTime && (Date.now() - _flashTime < 3000)) port.fillColor(GREEN, port.width - 14, 4, 8, 8);
 	}
 }
 
@@ -129,7 +128,7 @@ class StressPort extends Behavior {
 		drawBars(port, S.shH, 12, 44, port.width - 24, 74, function() { return ORANGE; }, labs);
 		port.drawString("Restored (min)", stL, BLACK, 12, 126, port.width - 24);
 		drawBars(port, S.srH, 12, 142, port.width - 24, 74, function() { return GREEN; }, labs);
-		if (_updateFlash) port.fillColor(GREEN, port.width - 14, 4, 8, 8);
+		if (_flashTime && (Date.now() - _flashTime < 3000)) port.fillColor(GREEN, port.width - 14, 4, 8, 8);
 	}
 }
 
@@ -189,13 +188,7 @@ class AppBhv extends Behavior {
 						}
 					}
 				});
-				_updateFlash = true;
-				if (_flashTimer) Timer.clear(_flashTimer);
-				_flashTimer = Timer.set(function() {
-					_updateFlash = false;
-					_flashTimer = undefined;
-					if (app_ && app_.first) app_.first.invalidate();
-				}, 2000);
+				_flashTime = Date.now();
 				app_.defer("showScreen");
 			},
 			onWritable() {
