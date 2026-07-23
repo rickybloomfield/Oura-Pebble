@@ -304,8 +304,13 @@ function sendMockScores() {
 
 // ---- Periodic refresh (every 30 minutes) ----
 var REFRESH_INTERVAL = 30 * 60 * 1000;
+var MIN_REFRESH_GAP = 60 * 1000;
+var _lastRefresh = 0;
 
 function refreshScores() {
+	var now = Date.now();
+	if (now - _lastRefresh < MIN_REFRESH_GAP) return;
+	_lastRefresh = now;
 	if (isSimulator()) { sendMockScores(); return; }
 	withValidToken(function (token) {
 		fetchAndSend(token);

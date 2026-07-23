@@ -193,6 +193,21 @@ function draw() {
 }
 
 // ---- Phone communication ----
+let _needRequest = true;
+
+function requestScores(msg) {
+	if (!_needRequest || !msg) return;
+	try {
+		const m = new Map;
+		m.set("REQUEST_SCORES", 1);
+		msg.write(m);
+		_needRequest = false;
+	}
+	catch (e) {
+		// outbox busy (phone pushing at the same time) — retried on next writable event or minute tick
+	}
+}
+
 const message = new Message({
 	keys: ["SLEEP_SCORE", "READINESS_SCORE", "ACTIVITY_SCORE", "AUTH_STATUS", "REQUEST_SCORES"],
 
@@ -229,23 +244,13 @@ const message = new Message({
 	},
 
 	onWritable() {
-		if (this.once) return;
-		this.once = true;
-		const m = new Map;
-		m.set("REQUEST_SCORES", 1);
-		this.write(m);
+		requestScores(this);
 	},
 });
 
-let _refreshMin = 0;
 watch.addEventListener("minutechange", () => {
-	_refreshMin++;
-	if (_refreshMin >= 30 && message.once) {
-		_refreshMin = 0;
-		const m = new Map;
-		m.set("REQUEST_SCORES", 1);
-		message.write(m);
-	}
+	if (state.loading) _needRequest = true;
+	requestScores(message);
 	draw();
 });
 draw();

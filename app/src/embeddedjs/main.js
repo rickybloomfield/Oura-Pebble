@@ -17,7 +17,20 @@ var stS = new Style({ font: "condensed 21px Roboto" });
 var stL = new Style({ font: "14px Gothic" });
 var stD = new Style({ font: "18px Gothic" });
 
-var idx = 0, app_ = null, msg_ = null, _refreshMin = 0;
+var idx = 0, app_ = null, msg_ = null, _needRequest = true;
+
+function requestScores(msg) {
+	if (!_needRequest || !msg) return;
+	try {
+		var m = new Map;
+		m.set("REQUEST_SCORES", 1);
+		msg.write(m);
+		_needRequest = false;
+	}
+	catch (e) {
+		// outbox busy (phone pushing at the same time) — retried on next writable event or minute tick
+	}
+}
 var _flashTime = 0;
 var CATS = ["readiness","sleep","activity","stress"];
 var LABS = ["Readiness","Sleep","Activity","Stress"];
@@ -192,11 +205,7 @@ class AppBhv extends Behavior {
 				app_.defer("showScreen");
 			},
 			onWritable() {
-				if (this.once) return;
-				this.once = true;
-				var m = new Map;
-				m.set("REQUEST_SCORES", 1);
-				this.write(m);
+				requestScores(this);
 			},
 		});
 	}
@@ -204,13 +213,8 @@ class AppBhv extends Behavior {
 	onDisplaying(app) {
 		this.showScreen(app);
 		watch.addEventListener("minutechange", () => {
-			_refreshMin++;
-			if (_refreshMin >= 30 && msg_ && msg_.once) {
-				_refreshMin = 0;
-				var m = new Map;
-				m.set("REQUEST_SCORES", 1);
-				msg_.write(m);
-			}
+			if (S.ld) _needRequest = true;
+			requestScores(msg_);
 			app_.defer("showScreen");
 		});
 	}
